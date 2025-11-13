@@ -1,0 +1,102 @@
+# MMPose 3D GUI - Real-time 3D Pose Estimation
+# Python 3.11+ recommended, 3.12 compatible
+
+# ========================================
+# MMPOSE & DEPENDENCIES
+# ========================================
+
+# MMPose framework (3D pose estimation)
+mmpose>=1.1.0
+
+# MMEngine (OpenMMLab training engine)
+mmengine
+
+# MMCV (Computer vision library with CUDA ops)
+mmcv>=2.0.1
+
+# MMDetection (Object detection framework - for RTMDet)
+mmdet>=3.1.0
+
+# PyTorch (Deep learning framework)
+# Install separately with CUDA support:
+# pip install torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu121
+torch>=2.4.0
+torchvision>=0.19.0
+
+# ========================================
+# COMPUTER VISION & IMAGE PROCESSING
+# ========================================
+
+# OpenCV (camera capture, image processing)
+opencv-python>=4.8.0
+
+# ========================================
+# NUMERICAL & SCIENTIFIC COMPUTING
+# ========================================
+
+# NumPy (MUST be <2.0 for PyTorch 2.4.0 compatibility)
+numpy<2,>=1.21.0
+
+# SciPy (scientific computing utilities)
+scipy>=1.9.0
+
+# Matplotlib (for 3D visualization)
+matplotlib==3.5.3
+
+# ========================================
+# DATA STREAMING & COMMUNICATION
+# ========================================
+
+# Lab Streaming Layer (LSL) - for real-time data streaming
+pylsl>=1.16.0
+
+# ZeroMQ (for camera bridge from Windows to WSL2)
+pyzmq>=25.0.0
+
+# ========================================
+# SYSTEM & PROCESS MANAGEMENT
+# ========================================
+
+# System information & monitoring
+psutil>=5.9.0
+
+# Fast JPEG decoder for camera optimization
+PyTurboJPEG>=1.7.0
+
+# ========================================
+# INSTALLATION NOTES
+# ========================================
+
+# Installation order (CRITICAL):
+# 1. Install PyTorch with CUDA:
+#    pip install torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu121
+#
+# 2. Install OpenMMLab stack:
+#    pip install -U openmim
+#    mim install mmengine
+#    mim install "mmcv>=2.0.1"
+#    mim install "mmdet>=3.1.0"
+#    mim install "mmpose>=1.1.0"
+#
+# 3. Install other dependencies:
+#    pip install opencv-python scipy matplotlib pylsl pyzmq psutil PyTurboJPEG
+#
+# 4. Install numpy<2.0 for compatibility:
+#    pip install "numpy<2.0"
+
+# GPU Requirements:
+# - CUDA 12.1+ with cuDNN
+# - NVIDIA GPU with compute capability 7.0+ (RTX 2000 series or newer)
+# - WSL2 with NVIDIA CUDA drivers installed
+# - Verify: python -c "import torch; print(torch.cuda.is_available())"
+
+# Python Environment:
+# - Use venv: python3 -m venv venv
+# - Always activate: source venv/bin/activate
+# - Use "python -m pip" not "pip" to ensure venv usage
+
+# Verification:
+# python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+# python -c "import mmpose; print(f'MMPose: {mmpose.__version__}')"
+# python -c "import mmcv; print(f'MMCV: {mmcv.__version__}')"
+# python -c "import mmdet; print(f'MMDet: {mmdet.__version__}')"

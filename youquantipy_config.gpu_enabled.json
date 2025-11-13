@@ -1,0 +1,718 @@
+{
+    "_comment": "TEST CONFIGURATION - ZeroMQ Bridge with 3 Cameras",
+    "_description": "Generated for testing 3 Windows cameras via ZMQ bridge",
+    "_detected_cameras": "3 cameras (640x480) via DirectShow backend",
+    "pipeline_mode": "rtmpose3d",
+    "system": {
+        "_comment": "System-Wide Configuration - Single Source of Truth",
+        "max_cameras": 10,
+        "_max_cameras_note": "CRITICAL: Maximum cameras supported system-wide (controls buffer allocation, semaphore creation, memory). This is a hard limit - all code references this value. Must be >= startup_mode.camera_count. Default: 10"
+    },
+    "grid_batching": {
+        "_comment": "Grid-based batch inference for MediaPipe landmarks",
+        "enabled": true,
+        "grid_cell_size": 192,
+        "max_grid_size": "3x3",
+        "_note": "Provides 3-4x speedup by batching all faces into single inference"
+    },
+    "grid_assignment": {
+        "_comment": "Grid-based participant assignment - REPLACES Procrustes tracking",
+        "_description": "Assigns participant IDs based on spatial grid position combined with embedding-based sticky IDs. Provides O(1) assignment vs expensive Procrustes shape matching.",
+        "enabled": true,
+        "rows": 2,
+        "cols": 4,
+        "_layout_note": "2x4 grid = 8 cells for 8 participants. Adjust based on participant_count.",
+        "sticky_ids": true,
+        "_sticky_note": "When enabled, embeddings make participant IDs follow faces across grid cells",
+        "cross_camera_matching": false,
+        "_cross_camera_note": "When enabled, same person across cameras gets same participant_id. DISABLED until single-camera working.",
+        "embedding_threshold": 0.55,
+        "_embedding_threshold_note": "Minimum cosine similarity to keep same participant_id (sticky match). LOWERED from 0.65 to 0.55 to allow more natural face variance (angle/lighting) and prevent over-spawning of IDs.",
+        "impostor_threshold": 0.5,
+        "_impostor_threshold_note": "Maximum similarity to detect impostor (new person in occupied cell). Adjusted for corrected [-1,1] scale (was 0.70 on incorrect [0,1] scale).",
+        "cell_transition_grace_period_ms": 500,
+        "_grace_period_note": "Grace period when face moves between cells (prevents ID flicker)",
+        "cell_timeout_s": 2.0,
+        "_timeout_note": "Time before participant marked as zombie (not visible). Zombies can be restored via embedding matching when person reappears.",
+        "zombie_timeout_s": 0,
+        "_zombie_timeout_note": "Time before zombie participants deleted from memory. 0 = never delete (session-long memory), 3600 = 1 hour. Zombies enable automatic participant restoration after any absence duration via embedding matching."
+    },
+    "platform": {
+        "_comment": "Platform Detection - Single Switch for WSL2 vs Native Linux",
+        "_description": "Controls camera discovery, GPU backend, and display handling. Set mode='auto' for auto-detection.",
+        "mode": "auto",
+        "_mode_options": [
+            "auto",
+            "wsl2",
+            "native_linux"
+        ],
+        "force_camera_discovery": null,
+        "_camera_discovery_options": [
+            "null (auto)",
+            "usbipd",
+            "v4l2_native",
+            "zmq"
+        ],
+        "force_gpu_backend": null,
+        "_gpu_backend_options": [
+            "null (auto)",
+            "d3d12",
+            "opengl"
+        ],
+        "force_display_mode": null,
+        "_display_mode_options": [
+            "null (auto)",
+            "wslg",
+            "x11",
+            "wayland"
+        ]
+    },
+    "mediapipe_processing": {
+        "num_faces": 8,
+        "min_detection_confidence": 0.7,
+        "min_tracking_confidence": 0.3,
+        "_min_tracking_confidence_note": "LOWERED from 0.5 to 0.3 - allows MediaPipe to track smoothly instead of re-detecting frequently (reduces landmark jitter)",
+        "min_face_presence_confidence": 0.3,
+        "_min_face_presence_confidence_note": "ADDED: 0.3 - maintains tracking through partial occlusions (prevents re-detection jitter)",
+        "running_mode": "LIVE_STREAM",
+        "use_gpu_delegate": true
+    },
+    "mediapipe_pose_processing": {
+        "use_gpu_delegate": false,
+        "min_detection_confidence": 0.7,
+        "min_tracking_confidence": 0.7,
+        "min_presence_confidence": 0.7,
+        "use_shoulders_for_centroid": true,
+        "fallback_to_hips": true,
+        "visibility_threshold": 0.7
+    },
+    "pose_smoothing": {
+        "_comment": "Temporal smoothing for pose landmarks to reduce jitter",
+        "_description": "Exponential moving average (EMA) with occlusion handling. CRITICAL: Uses participant_id (not array index) to prevent cross-participant smoothing.",
+        "enabled": true,
+        "alpha_stable": 0.05,
+        "_alpha_stable_note": "EMA alpha for stable landmarks (nose, shoulders, hips). LOWERED to 0.05 for heavier smoothing (5% current, 95% history)",
+        "alpha_distal": 0.03,
+        "_alpha_distal_note": "EMA alpha for distal landmarks (wrists, ankles, feet). LOWERED to 0.03 for aggressive smoothing of jittery extremities (3% current, 97% history)",
+        "alpha_default": 0.04,
+        "_alpha_default_note": "EMA alpha for other landmarks (elbows, knees, etc.). LOWERED to 0.04 for heavy smoothing (4% current, 96% history)",
+        "visibility_threshold": 0.3,
+        "_visibility_note": "Minimum visibility score to update landmark position. LOWERED to 0.3 to smooth more landmarks even when partially occluded.",
+        "freeze_on_occlusion": true,
+        "_freeze_note": "If true, keep previous smoothed value when occluded. If false, use raw jittery value."
+    },
+    "pose_to_participant_matching": {
+        "_comment": "CRITICAL FIX: Match poses to participants BEFORE smoothing",
+        "_description": "Prevents EMA bug where smoothing was applied across different people when MediaPipe detection order changed.",
+        "enabled": true,
+        "max_head_distance_px": 150,
+        "_max_distance_note": "Maximum pixel distance between pose head centroid and face centroid for valid match. Increase if participants are mismatched.",
+        "frame_tolerance": 20,
+        "_frame_tolerance_note": "Relaxed frame sync: search \u00b120 frames for face data when matching poses. INCREASED from 3 to handle 15 FPS pose vs 30 FPS face detection (up to 15-frame gap).",
+        "use_fallback_centroid": true,
+        "_fallback_note": "If head centroid calculation fails, use body centroid (shoulders/hips) as fallback."
+    },
+    "gpu_acceleration": {
+        "_comment": "GPU-Accelerated GUI Drawing (OpenCV CUDA)",
+        "_description": "Enables NVIDIA GPU acceleration for frame processing and overlay rendering. Provides 5-10x speedup over CPU.",
+        "enabled": true,
+        "profile_performance": true,
+        "_profile_note": "Set to true to log detailed GPU performance statistics",
+        "cache_size_per_resolution": 4,
+        "_cache_note": "Number of GPU buffers to pre-allocate per frame resolution",
+        "use_async_stream": true,
+        "_async_note": "Use CUDA streams for asynchronous GPU operations",
+        "batch_multi_camera": true,
+        "_batch_note": "Process multiple camera frames in batches for better GPU utilization",
+        "gpu_drawing": {
+            "_comment": "GPU-accelerated drawing operations",
+            "enable_gpu_landmarks": true,
+            "_landmarks_note": "GPU landmark drawing (experimental - limited OpenCV CUDA support)",
+            "enable_gpu_overlays": true,
+            "_overlays_note": "GPU overlay composition (future: OpenGL interop)"
+        }
+    },
+    "zmq_camera_bridge": {
+        "_comment": "ZeroMQ Camera Bridge - Auto-Enumeration Mode with Discovery Service",
+        "_description": "When enabled, automatically discovers and connects to all Windows cameras via ZMQ. NEW: Uses manifest-based discovery for 100% reliability!",
+        "enabled": true,
+        "windows_host_ip": "172.17.112.1",
+        "auto_detect_windows_ip": false,
+        "port_range": [
+            5551,
+            5560
+        ],
+        "max_cameras": 10,
+        "zmq_max_cameras": 10,
+        "_zmq_max_cameras_note": "ZMQ-specific camera limit (independent of system camera_count)",
+        "default_resolution": [
+            1280,
+            720
+        ],
+        "default_fps": 30,
+        "detected_resolution": [
+            1920,
+            1080
+        ],
+        "_detected_resolution_note": "Auto-detected resolution from first ZMQ camera stream. Set automatically by GUI, do not edit manually. If null, uses default_resolution until first camera connects.",
+        "connection_timeout_ms": 15000,
+        "_connection_timeout_ms_note": "Timeout for legacy port-by-port probing per camera (15s, increased from 6s for reliability)",
+        "frame_timeout_ms": 100,
+        "reconnect_interval_ms": 1000,
+        "_discovery_comment": "Discovery Service - Manifest-Based Camera Discovery (NEW!)",
+        "_discovery_description": "Windows broadcasts camera manifest on discovery_port. WSL receives manifest and waits for all cameras. 100% reliable vs. old probing method!",
+        "enable_manifest_discovery": true,
+        "_enable_manifest_discovery_note": "Set to false to use legacy port-by-port probing (not recommended)",
+        "discovery_port": 5550,
+        "_discovery_port_note": "Port for Windows discovery service (separate from camera streams)",
+        "discovery_timeout_ms": 20000,
+        "_discovery_timeout_ms_note": "Timeout for receiving manifest from Windows (20s, increased from 10s for reliability)",
+        "camera_connection_timeout_ms": 60000,
+        "_camera_connection_timeout_ms_note": "Timeout for waiting for all cameras to connect after manifest received (60s, increased from 30s for reliability)",
+        "discovered_camera_names": {
+            "0": "Integrated Camera",
+            "1": "Camera 1",
+            "2": "Camera 2",
+            "3": "Camera 3"
+        }
+    },
+    "camera_settings": {
+        "_comment": "Global Camera Defaults - Applied to all cameras when using ZMQ auto-enumeration",
+        "_description": "All cameras use these defaults. No per-camera config needed - truly plug-and-play!",
+        "default_width": 1280,
+        "default_height": 720,
+        "default_fps": 30,
+        "default_backend": "auto",
+        "default_buffersize": 2,
+        "use_mapped_memory": false,
+        "_use_mapped_memory_note": "CUDA mapped pinned memory disabled by default - prevents GUI blocking in WSL2",
+        "target_fps": 30,
+        "resolution": "1080p",
+        "camera_2": {
+            "width": 1920,
+            "height": 1080,
+            "fps": 30,
+            "backend": "auto"
+        },
+        "camera_3": {
+            "width": 1920,
+            "height": 1080,
+            "fps": 30,
+            "backend": "auto"
+        },
+        "camera_0": {
+            "width": 1920,
+            "height": 1080,
+            "fps": 30,
+            "backend": "auto"
+        },
+        "camera_1": {
+            "width": 1920,
+            "height": 1080,
+            "fps": 30,
+            "backend": "auto"
+        },
+        "camera_5": {
+            "width": 1280,
+            "height": 720,
+            "fps": 30,
+            "backend": "auto"
+        },
+        "camera_4": {
+            "width": 1920,
+            "height": 1080,
+            "fps": 30,
+            "backend": "auto"
+        }
+    },
+    "camera_timeouts": {
+        "_comment": "Timeouts for camera initialization and handshake (WSL2 GPU warmup takes 45-90s)",
+        "handshake_timeout_s": 90.0,
+        "ready_status_timeout_s": 120.0,
+        "handshake_ack_timeout_s": 15.0
+    },
+    "startup_mode": {
+        "multi_face": true,
+        "participant_count": 2,
+        "camera_count": 2,
+        "_camera_count_note": "System camera count for buffer allocation and face recognition (use zmq_max_cameras for ZMQ bridge)",
+        "enable_mesh": true
+    },
+    "lsl_streaming": {
+        "enabled": true,
+        "stream_name": "YouQuantiPy",
+        "stream_type": "FaceLandmarks",
+        "channel_format": "float32"
+    },
+    "logging": {
+        "level": "INFO",
+        "file": "youquantipy.log",
+        "console": true,
+        "verbose_debug": false,
+        "_verbose_debug_note": "Enable detailed per-frame debug logs (LSL, pose, correlator, etc.). Set to true for debugging, false for production."
+    },
+    "process_separation": {
+        "ring_buffer_size": 32,
+        "max_faces_per_frame": 8,
+        "enable_pinned_memory": true,
+        "roi_buffer_size": 8,
+        "gui_buffer_size": 8,
+        "detection_interval": 3,
+        "continuous_roi_generation": true,
+        "enable_temporal_smoothing": false,
+        "smoothing_factor": 0.7,
+        "enable_adaptive_batch_size": true,
+        "use_zero_copy_transfers": true,
+        "enable_preprocessing_process": true
+    },
+    "gui_processing": {
+        "enabled": true,
+        "display_buffer_size": 4,
+        "processing_interval_ms": 16,
+        "max_processing_latency_ms": 50,
+        "max_frame_lag": 2,
+        "_max_frame_lag_note": "LIFO optimization: Skip frames older than N frames behind latest (0=disabled, 1=aggressive, 2=balanced, 3+=conservative)",
+        "performance_monitoring": true,
+        "debug_logging": false
+    },
+    "buffer_optimization": {
+        "enable_write_indices": true,
+        "fallback_to_scanning": true,
+        "performance_monitoring": true
+    },
+    "video_recording": {
+        "enabled": false,
+        "save_directory": "./recordings",
+        "filename_template": "{participant}_{timestamp}",
+        "codec": "MJPG"
+    },
+    "advanced_detection": {
+        "retinaface_model": "D:/Projects/youquantipy/retinaface.onnx",
+        "retinaface_trt_path": "D:/Projects/youquantipy/retinaface.trt",
+        "landmark_trt_path": "D:/Projects/youquantipy/landmark.trt",
+        "arcface_model": "D:/Projects/youquantipy/arcface.onnx",
+        "tile_size": 640,
+        "tile_overlap": 0.2,
+        "detection_confidence": 0.3,
+        "nms_threshold": 0.4,
+        "max_detection_workers": 4,
+        "landmark_worker_count": 4,
+        "max_batch_size": 8,
+        "max_track_id_reuse": 1000,
+        "tracker_settings": {
+            "max_age": 30,
+            "min_hits": 3,
+            "iou_threshold": 0.3,
+            "max_drift": 50.0,
+            "drift_correction_rate": 0.1,
+            "detection_interval": 3,
+            "tracking_confidence": 0.3,
+            "stable_track_threshold": 5
+        },
+        "roi_settings": {
+            "target_size": [
+                256,
+                256
+            ],
+            "padding_ratio": 0.3,
+            "min_quality_score": 0.5,
+            "max_roi_workers": 4,
+            "quality_scoring": {
+                "aspect_ratio_penalty": 0.5,
+                "position_penalty": 0.5,
+                "boundary_margin_pixels": 50.0,
+                "score_weights": {
+                    "size": 0.4,
+                    "aspect": 0.2,
+                    "position": 0.2,
+                    "boundary": 0.2
+                }
+            }
+        },
+        "face_size_limits": {
+            "min_pixels": 20,
+            "max_size_ratio": 0.9,
+            "aspect_ratio_range": [
+                0.5,
+                2.0
+            ]
+        },
+        "gpu_settings": {
+            "gpu_device_id": 0,
+            "workspace_size_mb": 1024,
+            "batch_timeout_ms": 50,
+            "use_gpu_roi_processing": true,
+            "enable_gpu_ipc": false,
+            "enable_optical_flow": false,
+            "use_managed_memory": true,
+            "memory_pool_limit_mb": 2048,
+            "roi_batch_timeout_ms": 10,
+            "landmark_poll_interval_ms": 0.1,
+            "error_recovery_interval_ms": 100,
+            "fps_report_interval_s": 5.0,
+            "enable_fp16": true,
+            "max_batch_size": 8
+        },
+        "recognition_settings": {
+            "embedding_dim": 512,
+            "max_embeddings_per_person": 200,
+            "similarity_threshold": 0.9,
+            "update_threshold": 0.7
+        },
+        "enrollment_settings": {
+            "min_samples": 10,
+            "min_quality": 0.7,
+            "min_consistency": 0.85,
+            "min_stability": 0.8,
+            "collection_timeout": 30.0,
+            "improvement_window": 20
+        }
+    },
+    "audio_recording": {
+        "enabled": false,
+        "standalone_audio": true,
+        "audio_with_video": false,
+        "sample_rate": 44100,
+        "channels": 1,
+        "chunk_size": 1024,
+        "timeout_seconds": 0.1,
+        "queue_timeout_seconds": 2.0
+    },
+    "occlusion_recovery": {
+        "enabled": true,
+        "recovery_window_seconds": 30,
+        "recovery_window_frames": 300,
+        "zombie_track_min_hits": 3,
+        "zombie_track_min_confidence": 0.3,
+        "recovery_thresholds": {
+            "embedding": 0.75,
+            "shape": 0.85,
+            "position": 0.7,
+            "combined": 0.7
+        },
+        "recovery_weights": {
+            "embedding": 0.5,
+            "shape": 0.3,
+            "position": 0.2
+        },
+        "enable_biometric_recovery": true,
+        "recovery_query_timeout_ms": 50,
+        "recovery_track_id_offset": 10000
+    },
+    "audio_devices": {},
+    "camera_resolutions": {
+        "480p": [
+            640,
+            480
+        ],
+        "720p": [
+            1280,
+            720
+        ],
+        "1080p": [
+            1920,
+            1080
+        ],
+        "4K": [
+            3840,
+            2160
+        ]
+    },
+    "process_management": {
+        "performance": {
+            "target_retrieval_rate": 2.0,
+            "metrics_history_size": 10,
+            "timestamps_history_size": 100,
+            "update_interval_seconds": 1.0,
+            "progress_bar_length": 40,
+            "cleanup_frequency": 10
+        },
+        "health_monitor": {
+            "heartbeat_timeout_seconds": 10.0,
+            "max_restart_attempts": 3,
+            "check_interval_seconds": 1.0,
+            "thread_timeout_seconds": 2.0,
+            "history_limit": 100
+        },
+        "gpu_memory": {
+            "pool_size": 100,
+            "pool_limit_gb": 2.0,
+            "device_id": 0
+        },
+        "gpu_frame_cache": {
+            "max_size_mb": 500,
+            "ttl_seconds": 0.5,
+            "cleanup_frequency": 10
+        }
+    },
+    "data_streaming": {
+        "lsl": {
+            "correlator_window_size": 60,
+            "max_participants": 6,
+            "fps_report_interval": 5.0,
+            "main_loop_sleep": 0.001,
+            "chunk_size": 1,
+            "max_buffered": 360,
+            "batch_window_ms": 25
+        },
+        "correlator": {
+            "fast_window_size": 50,
+            "slow_window_multiplier": 5,
+            "delta_threshold": 0.005,
+            "similarity_threshold": 0.6,
+            "derivative_threshold": 0.03,
+            "derivative_smooth": 0.3,
+            "transient_decay": 0.8,
+            "brief_decay": 0.9,
+            "neutral_threshold_multiplier": 0.5
+        },
+        "performance": {
+            "debug_interval_seconds": 2.0,
+            "lsl_push_throttle": true,
+            "queue_timeout_seconds": 0.1
+        }
+    },
+    "gui_interface": {
+        "theme": {
+            "_comment": "Azure ttk Theme Settings",
+            "_description": "Controls the appearance of the GUI with light/dark mode support",
+            "mode": "dark",
+            "_mode_options": [
+                "light",
+                "dark"
+            ],
+            "_mode_note": "Current theme mode - 'light' or 'dark'. Can be toggled at runtime via the theme toggle button."
+        },
+        "canvas": {
+            "refresh_interval": 0.033,
+            "max_display_width": 640,
+            "max_display_height": 480,
+            "cache_timeout": 1.0,
+            "pose_skeleton_opacity": 0.4,
+            "_pose_skeleton_opacity_note": "Opacity for pose skeleton overlay (0.0=invisible, 1.0=fully opaque). Default: 0.4 (40% opacity)",
+            "draw_modes": {
+                "face_draw_mode": "full_contours",
+                "draw_jaw_overlay": true,
+                "debug_mode": true
+            },
+            "coordinate_transform": {
+                "frame_timeout": 0.5
+            }
+        },
+        "status_panel": {
+            "panel_height": 200,
+            "update_interval": 1.0,
+            "summary_format": {
+                "show_uptime": true,
+                "show_memory": true,
+                "show_fps": true
+            },
+            "diagnostic_timeout": 10.0
+        },
+        "reliability_monitor": {
+            "memory_growth_threshold": 500,
+            "max_queue_size": 10,
+            "gui_freeze_threshold": 60.0,
+            "resource_check_interval": 30,
+            "queue_check_interval": 5,
+            "gui_check_interval": 1,
+            "stats_report_interval": 300,
+            "canvas_cache_limit": 10,
+            "startup_grace_period": 30.0
+        }
+    },
+    "participant_management": {
+        "_ARCHITECTURE_OVERVIEW": "Grid-Based Participant Assignment + Cross-Camera Matching",
+        "_STAGE_1_LOCAL": "GridParticipantManager - Per-camera grid + embedding assignment (see 'grid_assignment' section)",
+        "_STAGE_2_GLOBAL": "GlobalParticipantManager - Cross-camera matching using face embeddings (see 'global_manager' section below)",
+        "_DATA_FLOW": "MediaPipe (landmarks) \u2192 ArcFace (embeddings) \u2192 GridParticipantManager (participant_id) \u2192 GlobalParticipantManager (cross-camera) \u2192 Enrollment",
+        "_KEY_DIFFERENCE": "GridParticipantManager uses spatial grid + embeddings (O(1) assignment). GlobalParticipantManager uses embeddings for cross-camera matching (100%).",
+        "enrollment": {
+            "min_samples": 90,
+            "_min_samples_note": "INCREASED to 90 samples - very high quality enrollment, prevents false enrollments",
+            "min_quality_score": 0.4,
+            "_min_quality_note": "TEMPORARILY LOWERED to 0.40 for diagnostic testing (was 0.55) - will revert after diagnosing enrollment issues",
+            "min_consistency_score": 0.8,
+            "_min_consistency_note": "INCREASED from 0.75 to 0.80 - embeddings must be more consistent across samples",
+            "min_stability_score": 0.78,
+            "_min_stability_note": "INCREASED from 0.75 to 0.78 - require better temporal stability",
+            "collection_timeout": 60.0,
+            "_collection_timeout_note": "Timeout for sample collection phase (90 samples at 30fps = ~3 seconds, with quality filtering ~30-45 seconds)",
+            "improvement_window": 30,
+            "validation_criteria": {
+                "consistency_threshold": 0.8,
+                "_consistency_note": "REDUCED from 0.88 to 0.80 - achievable with real face data, prevents validation failures",
+                "stability_threshold": 0.8,
+                "_stability_note": "REDUCED from 0.82 to 0.80 - reasonable temporal stability threshold"
+            }
+        },
+        "face_recognition": {
+            "embedding_dim": 512,
+            "max_embeddings_per_person": 100,
+            "similarity_threshold": 0.85,
+            "_similarity_threshold_note": "REDUCED from 0.9 to 0.85 - allow matching with good confidence while maintaining quality",
+            "update_threshold": 0.75,
+            "_update_threshold_note": "REDUCED from 0.8 to 0.75 - update embeddings more frequently for better adaptation",
+            "queue_sizes": {
+                "input_queue": 100,
+                "output_queue": 100,
+                "command_queue": 50
+            },
+            "processing": {
+                "timeout": 0.001,
+                "batch_size": 1,
+                "model_init_timeout": 10.0
+            }
+        },
+        "participant_tracking": {
+            "_DEPRECATED": "DEPRECATED - UnifiedTracker removed in favor of GridParticipantManager",
+            "_OLD_SYSTEM": "UnifiedTracker - PER-CAMERA frame-to-frame tracking (removed 2025-01-26)",
+            "_REPLACED_BY": "GridParticipantManager - Grid-based spatial assignment + embedding sticky IDs (see 'grid_assignment' section)",
+            "_WHY_REMOVED": "Procrustes shape matching was expensive (O(n^2)) and unreliable. Grid + embeddings provides O(1) assignment with better accuracy.",
+            "_NOTE": "Settings below are unused and kept for historical reference only.",
+            "face_threshold": 0.1,
+            "pose_threshold": 0.15,
+            "max_missed_frames": 60,
+            "recently_lost_frames": 300,
+            "procrustes_threshold": 0.05,
+            "weights": {
+                "_PURPOSE": "Weights for frame-to-frame tracking WITHIN a single camera (no face recognition available yet)",
+                "shape_weight": 1.0,
+                "_shape_weight_note": "Procrustes distance between landmark shapes (100% - position disabled for robust ID stability)",
+                "position_weight": 0.0,
+                "_position_weight_note": "DISABLED - Spatial position no longer used (prevents ID swaps when participants swap locations)"
+            },
+            "stable_landmarks": [
+                10,
+                9,
+                168,
+                4,
+                226,
+                359,
+                10,
+                234,
+                454,
+                152
+            ],
+            "assignment": {
+                "cost_threshold": 1.0,
+                "penalty_lost": 0.1,
+                "penalty_global": 0.2,
+                "penalty_missed_frames": 0.01
+            }
+        },
+        "global_manager": {
+            "_SYSTEM": "GlobalParticipantManager - CROSS-CAMERA participant matching",
+            "_DESCRIPTION": "Matches participants across multiple cameras using face embeddings. Runs AFTER GridParticipantManager assignment.",
+            "_PIPELINE_STAGE": "Stage 2: GridParticipantManager (per-camera) \u2192 ArcFace (embeddings) \u2192 GlobalParticipantManager (cross-camera merge)",
+            "_PURPOSE": "Ensures same person gets same participant_id across all cameras (e.g., Camera 0 P1 = Camera 1 P1)",
+            "_NOTE": "This is DIFFERENT from GridParticipantManager (per-camera grid assignment). This handles GLOBAL identity across cameras.",
+            "distance_threshold": 0.2,
+            "procrustes_threshold": 0.02,
+            "recognition_threshold": 0.6,
+            "_recognition_threshold_note": "Reduced from 0.7 for more permissive face recognition matching",
+            "weights": {
+                "_SYSTEM": "CROSS-CAMERA MATCHING WEIGHTS (uses face embeddings)",
+                "_UPDATED": "2025-01-22 - Changed to 100% face recognition (disabled shape/position fallback)",
+                "recognition_weight": 1.0,
+                "_recognition_weight_note": "Set to 1.0 - FACE RECOGNITION ONLY (100%). No fallback to shape/position.",
+                "shape_weight": 0.0,
+                "_shape_weight_note": "Set to 0.0 - Procrustes shape matching DISABLED for cross-camera matching",
+                "position_weight": 0.0,
+                "_position_weight_note": "Set to 0.0 - Position matching DISABLED for cross-camera matching (position meaningless across cameras)"
+            },
+            "cache_settings": {
+                "recently_lost_timeout": 10.0,
+                "max_embeddings_per_participant": 50,
+                "embedding_similarity_threshold": 0.85,
+                "_embedding_similarity_threshold_note": "INCREASED from 0.75 to 0.85 - much stricter matching to prevent ID swaps when participants swap locations (biometric-only matching)"
+            },
+            "cross_camera_matching": {
+                "_comment": "Cross-camera participant merging via face recognition - STRICT to prevent different people getting same ID",
+                "min_embedding_similarity_for_merge": 0.9,
+                "_merge_threshold_note": "KEEP at 0.90 - VERY STRICT threshold to prevent false cross-camera merges (different people assigned same ID)"
+            }
+        },
+        "locking": {
+            "_comment": "Participant Lock System - Prevents ID Theft and Enables Strict Face-Name Pairing",
+            "_description": "Lock participants after enrollment to prevent impostors from stealing IDs. Locked participants require stricter embedding match (0.85 vs normal 0.65).",
+            "enabled": true,
+            "lock_threshold": 0.85,
+            "_lock_threshold_note": "Stricter threshold for locked participants (0.85 vs normal 0.65) - prevents false matches",
+            "show_absent_locked_slots": true,
+            "_show_absent_note": "Display 'P{id} \ud83d\udd12 - Absent' in GUI when locked participant is not in frame",
+            "_usage_note": "Click lock button next to participant name after enrollment completes (green outline). Locked participants survive recently_lost timeout indefinitely."
+        }
+    },
+    "buffer_management": {
+        "timeouts": {
+            "recovery_polling_interval_ms": 5,
+            "recovery_response_timeout_ms": 100,
+            "command_retry_delay_ms": 10,
+            "no_faces_sleep_ms": 10
+        },
+        "camera": {
+            "buffer_size": 2
+        },
+        "commands": {
+            "retry_count": 3,
+            "timeout_seconds": 2.0
+        },
+        "pinned_memory": {
+            "detection_frame_count": 4,
+            "roi_buffer_count": 16,
+            "hd_frame_count": 2
+        }
+    },
+    "bluetooth_devices": {
+        "participant0": [
+            {
+                "mac": "00:11:22:33:44:00",
+                "type": "mock_device",
+                "enabled": true
+            }
+        ]
+    },
+    "bluetooth_settings": {
+        "_comment": "Global Bluetooth configuration",
+        "reconnect_retries": 5,
+        "_reconnect_retries_note": "Number of automatic reconnection attempts before giving up",
+        "reconnect_backoff_ms": [
+            1000,
+            2000,
+            4000,
+            8000,
+            16000
+        ],
+        "_reconnect_backoff_note": "Exponential backoff delays for reconnection attempts (milliseconds)",
+        "scan_timeout_sec": 10,
+        "_scan_timeout_note": "Bluetooth device discovery timeout (seconds)"
+    },
+    "bluetooth_bridge": {
+        "_comment": "ZeroMQ Bluetooth Bridge - Windows to WSL2",
+        "_description": "Receives Bluetooth data from Windows bridge via ZMQ (similar to camera bridge)",
+        "enabled": true,
+        "windows_host_ip": "auto",
+        "_windows_host_ip_note": "Auto-detect from /etc/resolv.conf, or set manually (e.g., '172.20.208.1')",
+        "base_port": 5650,
+        "_base_port_note": "Base port for Bluetooth bridges. Changed from 5560 to 5650 to avoid camera port conflicts (cameras use 5550-5560).",
+        "port_range": [
+            5651,
+            5669
+        ],
+        "_port_range_note": "Data port range for up to 19 Bluetooth devices (5651-5669). Port 5650 reserved for discovery.",
+        "connection_timeout_ms": 5000,
+        "frame_timeout_ms": 100,
+        "reconnect_interval_ms": 1000,
+        "discovery_port": 5650,
+        "_discovery_port_note": "Port for manifest broadcast (device discovery). Individual devices stream on 5651+.",
+        "discovered_devices": {
+            "24:AC:AC:03:C8:60": {
+                "name": "Polar H10 03C8603A",
+                "port": 5651,
+                "topic": "bt_device0",
+                "device_index": 0
+            }
+        }
+    }
+}

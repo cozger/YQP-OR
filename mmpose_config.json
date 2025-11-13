@@ -1,0 +1,77 @@
+{
+  "mmpose_3d_pipeline": {
+    "enabled": true,
+    "device": "cuda:0",
+
+    "person_detector": {
+      "config": "/home/canoz/Projects/surgery/mmpose/demo/mmdetection_cfg/rtmdet_m_640-8xb32_coco-person.py",
+      "checkpoint": "/home/canoz/Projects/surgery/mmpose_3d_gui/models/rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.pth",
+      "confidence_threshold": 0.5
+    },
+
+    "pose_estimator": {
+      "config": "/home/canoz/Projects/surgery/mmpose/projects/rtmpose3d/configs/rtmw3d-x_8xb32_cocktail14-384x288.py",
+      "checkpoint": "/home/canoz/Projects/surgery/mmpose_3d_gui/models/rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.pth",
+      "confidence_threshold": 0.3,
+      "keypoints_per_person": 133,
+      "keypoint_groups": {
+        "body": [0, 16],
+        "feet": [17, 22],
+        "face": [23, 90],
+        "left_hand": [91, 111],
+        "right_hand": [112, 132]
+      }
+    }
+  },
+
+  "camera_settings": {
+    "max_cameras": 4,
+    "default_resolution": {
+      "width": 640,
+      "height": 480
+    },
+    "frame_buffer_size": 4
+  },
+
+  "buffer_settings": {
+    "max_persons": 4,
+    "ring_buffer_size": 4
+  },
+
+  "visualization": {
+    "2d_overlay": {
+      "enabled": true,
+      "draw_keypoints": true,
+      "draw_skeleton": true,
+      "keypoint_radius": 3,
+      "line_thickness": 2,
+      "confidence_threshold": 0.3
+    },
+
+    "3d_plot": {
+      "enabled": true,
+      "update_fps": 30,
+      "axes_limits": {
+        "x": [-1.5, 1.5],
+        "y": [-1.5, 1.5],
+        "z": [-1.5, 1.5]
+      },
+      "view_angle": {
+        "elevation": 20,
+        "azimuth": 45
+      }
+    }
+  },
+
+  "lsl_streaming": {
+    "enabled": false,
+    "stream_name": "MMPose3D_Keypoints",
+    "stream_type": "Pose3D",
+    "channel_format": "float32"
+  },
+
+  "performance": {
+    "log_fps_interval_sec": 1.0,
+    "process_timeout_sec": 10.0
+  }
+}

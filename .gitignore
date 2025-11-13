@@ -1,0 +1,65 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# ML Models (too large for GitHub - 668 MB)
+models/*.pth
+models/*.onnx
+
+# CUDA installers and tools (too large - 1.5 GB)
+tools/*.deb
+tools/*.tar.gz
+tools/*.zip
+tools/*.run
+
+# Large binaries
+resources/Polar/PolarGUI/dist/
+*.exe
+
+# Test data
+*.xdf
+resources/Polar/*.xdf
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code cache
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test outputs
+*.log
+test_*.png
+screenshot_*.png
+
+# Shared memory buffers
+/dev/shm/yq_*
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
