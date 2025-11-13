@@ -5,6 +5,8 @@
 
 This document provides technical documentation for critical architectural decisions, bug fixes, and system configurations that are essential for maintaining and extending the YouQuantiPy pose estimation system.
 
+> **Note**: For comprehensive system architecture documentation including process topology, buffer architecture, data flow diagrams, and complete system wiring diagrams, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
 ---
 
 ## Table of Contents
@@ -1223,6 +1225,8 @@ Interpretation: All three metrics correctly detect elevation
 ---
 
 ## Code Locations Reference
+
+> **See Also**: For a comprehensive reference of all system files including visualization, metrics, camera sources, and utilities, refer to the [Critical Files Reference](ARCHITECTURE.md#critical-files-reference) section in ARCHITECTURE.md.
 
 ### Critical Files for Buffer Management
 
